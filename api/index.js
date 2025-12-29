@@ -2,12 +2,20 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
-const { connectDB } = require('../server/src/config/db');
-const authRoutes = require('../server/src/routes/authRoutes');
-const productRoutes = require('../server/src/routes/productRoutes');
-const orderRoutes = require('../server/src/routes/orderRoutes');
+const path = require('path');
+
+// Add server directory to module paths for Vercel
+const serverPath = path.join(__dirname, '..', 'server');
+const configPath = path.join(serverPath, 'src', 'config', 'db');
+const routesPath = path.join(serverPath, 'src', 'routes');
+
+const { connectDB } = require(configPath);
+const authRoutes = require(path.join(routesPath, 'authRoutes'));
+const productRoutes = require(path.join(routesPath, 'productRoutes'));
+const orderRoutes = require(path.join(routesPath, 'orderRoutes'));
 
 let app;
+let dbConnected = false;
 
 // Initialize app once
 async function initializeApp() {
@@ -15,10 +23,16 @@ async function initializeApp() {
 
   app = express();
 
-  try {
-    await connectDB(process.env.MONGODB_URI);
-  } catch (err) {
-    console.error('MongoDB connection error:', err.message);
+  // Connect to MongoDB once
+  if (!dbConnected) {
+    try {
+      await connectDB(process.env.MONGODB_URI);
+      dbConnected = true;
+      console.log('MongoDB connected');
+    } catch (err) {
+      console.error('MongoDB connection error:', err.message);
+      dbConnected = false;
+    }
   }
 
   app.use(cors({
@@ -29,7 +43,7 @@ async function initializeApp() {
   app.use(morgan('dev'));
 
   app.get('/health', (req, res) => {
-    res.json({ status: 'ok', service: 'cement-steel-backend' });
+    res.json({ status: 'ok', service: 'cement-steel-backend', db: dbConnected ? 'connected' : 'disconnected' });
   });
 
   app.use('/auth', authRoutes);
@@ -37,8 +51,8 @@ async function initializeApp() {
   app.use('/orders', orderRoutes);
 
   app.use((err, req, res, next) => {
-    console.error(err);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error('Error:', err.message);
+    res.status(500).json({ message: 'Internal server error', error: err.message });
   });
 
   return app;
@@ -46,6 +60,11 @@ async function initializeApp() {
 
 // Vercel serverless handler
 module.exports = async (req, res) => {
-  const handler = await initializeApp();
-  handler(req, res);
+  try {
+    const handler = await initializeApp();
+    handler(req, res);
+  } catch (err) {
+    console.error('Handler error:', err);
+    res.status(500).json({ message: 'Handler error', error: err.message });
+  }
 };
