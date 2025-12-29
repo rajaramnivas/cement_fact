@@ -2,28 +2,50 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
-const { connectDB } = require('../src/config/db');
-const authRoutes = require('../src/routes/authRoutes');
-const productRoutes = require('../src/routes/productRoutes');
-const orderRoutes = require('../src/routes/orderRoutes');
+const { connectDB } = require('../server/src/config/db');
+const authRoutes = require('../server/src/routes/authRoutes');
+const productRoutes = require('../server/src/routes/productRoutes');
+const orderRoutes = require('../server/src/routes/orderRoutes');
 
-const app = express();
+let app;
 
-app.use(cors());
-app.use(express.json());
-app.use(morgan('dev'));
+// Initialize app once
+async function initializeApp() {
+  if (app) return app;
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'cement-steel-backend' });
-});
+  app = express();
 
-app.use('/api/auth', authRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/orders', orderRoutes);
+  try {
+    await connectDB(process.env.MONGODB_URI);
+  } catch (err) {
+    console.error('MongoDB connection error:', err.message);
+  }
 
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ message: 'Internal server error' });
-});
+  app.use(cors({
+    origin: '*',
+    credentials: true
+  }));
+  app.use(express.json());
+  app.use(morgan('dev'));
 
-module.exports = app;
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok', service: 'cement-steel-backend' });
+  });
+
+  app.use('/auth', authRoutes);
+  app.use('/products', productRoutes);
+  app.use('/orders', orderRoutes);
+
+  app.use((err, req, res, next) => {
+    console.error(err);
+    res.status(500).json({ message: 'Internal server error' });
+  });
+
+  return app;
+}
+
+// Vercel serverless handler
+module.exports = async (req, res) => {
+  const handler = await initializeApp();
+  handler(req, res);
+};
