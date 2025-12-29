@@ -61,10 +61,18 @@ async function initializeApp() {
 // Vercel serverless handler
 module.exports = async (req, res) => {
   try {
-    const handler = await initializeApp();
-    handler(req, res);
+    const app = await initializeApp();
+    
+    // Strip /api prefix if present for Express routing
+    const originalUrl = req.url;
+    if (req.url.startsWith('/api')) {
+      req.url = req.url.replace('/api', '') || '/';
+    }
+    
+    // Call Express handler
+    return app(req, res);
   } catch (err) {
     console.error('Handler error:', err);
-    res.status(500).json({ message: 'Handler error', error: err.message });
+    return res.status(500).json({ message: 'Handler error', error: err.message });
   }
 };
